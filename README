@@ -6,6 +6,15 @@ http://barryp.org/software/py-amqplib/
 It have been tested with RabbitMQ server.
 
 Project home page: http://code.google.com/p/php-amqplib/
+
+For discussion, please join the group:
+
+http://groups.google.com/group/php-amqplib-devel
+
+For bug reports, please use bug tracking system at the project page.
+
+Patched are very welcome!
+
 Author: Vadim Zaliva <lord@crocodile.org>
 
 
