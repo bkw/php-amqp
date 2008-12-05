@@ -1,0 +1,11 @@
+PHP library implementing Advanced Message Queuing Protocol (AMQP).
+
+The library is port of python code of py-amqplib
+http://barryp.org/software/py-amqplib/
+
+It have been tested with RabbitMQ server.
+
+Project home page: http://code.google.com/p/php-amqplib/
+Author: Vadim Zaliva <lord@crocodile.org>
+
+
