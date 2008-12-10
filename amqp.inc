@@ -378,6 +378,8 @@ class AMQPConnection extends AbstractChannel
 
     protected function write($data)
     {
+        debug_msg("< [hex]:\n" . hexdump($data, $htmloutput = false, $uppercase = true, $return = true));
+        
         $len = strlen($data);
         while(true)
         {
@@ -476,7 +478,6 @@ class AMQPConnection extends AbstractChannel
 
         global $METHOD_NAME_MAP;            
         debug_msg("< " . methodSig($method_sig) . ": " . $METHOD_NAME_MAP[methodSig($method_sig)]);
-        debug_msg("< [hex]:\n" . hexdump($pkt, $htmloutput = false, $uppercase = true, $return = true));
     }
 
     /**
