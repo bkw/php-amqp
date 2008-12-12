@@ -1435,16 +1435,11 @@ class AMQPMessage extends GenericContent
         "cluster_id" => "shortst"
     );
 
-    public function __construct($body="", $children=NULL)
+    public function __construct($body = '', $properties = null)
     {
         $this->body = $body;
 
-        $args = func_get_args();
-        unset($args['body']);
-        if(array_key_exists('children', $args))
-            unset($args['children']);
-        
-        parent::__construct($args, $prop_types=AMQPMessage::$PROPERTIES);
+        parent::__construct($properties, $prop_types=AMQPMessage::$PROPERTIES);
     }
 }
 

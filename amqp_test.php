@@ -28,7 +28,7 @@ try
     echo "Declaring exchange\n";
     $ch->exchange_declare($EXCHANGE, 'direct', false, false, false);
     echo "Creating message\n";
-    $msg = new AMQPMessage($msg_body, NULL, $content_type='text/plain');
+    $msg = new AMQPMessage($msg_body, array('content_type' => 'text/plain'));
     
     echo "Publishing message\n";
     $ch->basic_publish($msg, $EXCHANGE, $QUEUE);

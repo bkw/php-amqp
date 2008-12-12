@@ -497,10 +497,10 @@ class GenericContent
         else
             $this->prop_types = GenericContent::$PROPERTIES;
         $d = array();
-        foreach($this->prop_types as $propname=>$proptype)
-            if(array_key_exists($propname, $props))
-                $d[$propname] = $propvalue;
-
+        if ($props)
+            $d = array_intersect_key($props, $this->prop_types);
+        else    
+            $d = array();
         $this->properties = $d;
     }
 
@@ -587,7 +587,7 @@ class GenericContent
                 
                 $flag_bits |= (1 << $shift);
                 if($proptype != "bit")
-                    call_user_func(array($raw_bytes, "write_" + proptype),
+                    call_user_func(array($raw_bytes, "write_" . $proptype),
                                    $val);
             }
             $shift -= 1;
