@@ -391,8 +391,8 @@ class AMQPReader
         $lo = unpack('N', $this->rawread(4));
 
         // workaround signed/unsigned braindamage in php
-        $hi = sprintf ( "%u", $hi );
-        $lo = sprintf ( "%u", $lo );
+        $hi = sprintf ( "%u", $hi[1] );
+        $lo = sprintf ( "%u", $lo[1] );
  
         return bcadd(bcmul($hi, "4294967296" ), $lo);
     }
