@@ -538,7 +538,7 @@ class GenericContent
         {
             $flag_bits = $r->read_short();
             array_push($flags, $flag_bits);
-            if($flag_bits & 1 == 0)
+            if(($flag_bits & 1) == 0)
                 break;
         }
 
@@ -552,7 +552,7 @@ class GenericContent
             $flag_bits = array_shift($flags);
             $shift = 15;
             if($flag_bits & (1 << $shift))
-                $d[$key] = call_user_func(array($r,"read_"+$proptype));
+                $d[$key] = call_user_func(array($r,"read_".$proptype));
             $shift -= 1;
         }
         $this->properties = $d;

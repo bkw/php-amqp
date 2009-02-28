@@ -220,7 +220,7 @@ class AbstractChannel
      * Unexpected methods are queued up for later calls to this Python
      * method.
      */
-    protected function wait($allowed_methods=NULL)
+    public function wait($allowed_methods=NULL)
     {
         if($allowed_methods)
             debug_msg("waiting for " . implode(", ", $allowed_methods));
