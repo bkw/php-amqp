@@ -13,12 +13,6 @@ class AMQPWriterTests extends UnitTestCase
     function TestOfLogging()
     {
         $this->UnitTestCase();
-        
-        $r = new AMQPReader("");
-        if($r->is64bits)
-            echo "Testing on 64 bit system\n";
-        else
-            echo "Testing on 32 bit system\n";
     }
     
     function testWriteLong()
