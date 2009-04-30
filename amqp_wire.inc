@@ -514,7 +514,7 @@ class GenericContent
         if(array_key_exists($name,$this->properties))
             return $this->properties[$name];
         
-        if(is_set($this->delivery_info))
+        if(isset($this->delivery_info))
             if(array_key_exists($name,$this->delivery_info))
                 return $this->delivery_info[$name];
         
@@ -546,11 +546,13 @@ class GenericContent
         $d = array();
         foreach ($this->prop_types as $key => $proptype)
         {
-            if($shift == 0)
-                if(!$flags)
+            if($shift == 0) {
+                if(!$flags) {
                     break;
-            $flag_bits = array_shift($flags);
-            $shift = 15;
+                }
+                $flag_bits = array_shift($flags);
+                $shift = 15;
+            }
             if($flag_bits & (1 << $shift))
                 $d[$key] = call_user_func(array($r,"read_".$proptype));
             $shift -= 1;
