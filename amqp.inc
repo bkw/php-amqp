@@ -309,7 +309,9 @@ class AMQPConnection extends AbstractChannel
                                 $vhost="/",$insist=false,
                                 $login_method="AMQPLAIN",
                                 $login_response=NULL,
-                                $locale="en_US")
+                                $locale="en_US",
+                                $connection_timeout = 10,
+                                $read_write_timeout = 3)
     {
         $this->METHOD_MAP = AMQPConnection::$METHOD_MAP;
 
@@ -335,8 +337,11 @@ class AMQPConnection extends AbstractChannel
 
             $errstr = $errno = NULL;
             $this->sock = NULL;
-            if (!($this->sock = fsockopen($host,$port,$errno,$errstr)))
+            if (!($this->sock = fsockopen($host,$port,$errno,$errstr,$conn_timeout)))
+            {
                 throw new Exception ("Error Connecting to server($errno): $errstr ");
+            }
+            stream_set_timeout($this->sock, $rw_timeout);
             stream_set_blocking($this->sock, 1);
             $this->input = new AMQPReader(null, $this->sock);
 
