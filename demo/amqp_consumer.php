@@ -33,7 +33,7 @@ function process_message($msg) {
     echo $msg->body;
     echo "\n--------\n";
     
-    $ch->basic_ack($msg->delivery_tag);
+    $ch->basic_ack($msg->delivery_info['delivery_tag']);
     
     // Cancel callback
     if ($msg->body === 'quit') {
