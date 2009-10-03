@@ -10,17 +10,12 @@
 require_once('amqp_wire.inc');
 require_once('hexdump.inc');
 
-function debug_msg($s)
-{
-    error_log($s);
-}
-
 function methodSig($a)
 {
     if(is_string($a))
         return $a;
     else
-        return sprintf("%d,%d",$a[0] ,$a[1]);
+        return $a[0].','.$a[1];
 }
     
 
@@ -125,6 +120,8 @@ $METHOD_NAME_MAP = array(
 
 class AbstractChannel
 {
+    private $debug;
+
     private static $CONTENT_METHODS = array(
         "60,60", // Basic.deliver
         "60,71", // Basic.get_ok
@@ -160,7 +157,7 @@ class AbstractChannel
 
     function next_frame()
     {
-        debug_msg("waiting for a new frame");
+        $this->debug_msg("waiting for a new frame");
         if($this->frame_queue != NULL)
             return array_pop($this->frame_queue);
         return $this->connection->wait_channel($this->channel_id);
@@ -208,7 +205,7 @@ class AbstractChannel
             {
                 $msg->body = $msg->body->decode($msg->content_encoding);
             } catch (Exception $e) {
-                debug_msg("Ignoring body decoding exception: " . $e->getMessage());
+                $this->debug_msg("Ignoring body decoding exception: " . $e->getMessage());
             }
         }
         
@@ -223,19 +220,19 @@ class AbstractChannel
     public function wait($allowed_methods=NULL)
     {
         if($allowed_methods)
-            debug_msg("waiting for " . implode(", ", $allowed_methods));
+            $this->debug_msg("waiting for " . implode(", ", $allowed_methods));
         else
-            debug_msg("waiting for any method");
+            $this->debug_msg("waiting for any method");
 
         //Process deferred methods
         foreach($this->method_queue as $qk=>$queued_method)
         {
-            debug_msg("checking queue method " . $qk);
+            $this->debug_msg("checking queue method " . $qk);
             $method_sig = $queued_method[0];
             if($allowed_methods==NULL || in_array($method_sig, $allowed_methods))
             {
                 unset($this->method_queue[$qk]);
-                debug_msg("Executing queued method: $method_sig: " .
+                $this->debug_msg("Executing queued method: $method_sig: " .
                           $METHOD_NAME_MAP[methodSig($method_sig)]);
                 
                 return $this->dispatch($queued_method[0],
@@ -262,7 +259,7 @@ class AbstractChannel
             $args = new AMQPReader(substr($payload,4));
 
             global $METHOD_NAME_MAP;            
-            debug_msg("> $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
+            $this->debug_msg("> $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
             
             if(in_array($method_sig, AbstractChannel::$CONTENT_METHODS))
                 $content = $this->wait_content();
@@ -278,8 +275,18 @@ class AbstractChannel
             
             // Wasn't what we were looking for? save it for later
             global $METHOD_NAME_MAP;            
-            debug_msg("Queueing for later: $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
+            $this->debug_msg("Queueing for later: $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
             array_push($this->method_queue,array($method_sig, $args, $content));
+        }
+    }
+    
+    public function debug($flag) {
+        $this->debug = ($flag) ? true:false;
+    }
+    
+    public function debug_msg($msg) {
+        if ($this->debug) {
+            error_log($msg);
         }
     }
     
@@ -363,7 +370,7 @@ class AMQPConnection extends AbstractChannel
                 return; // we weren't redirected
 
             // we were redirected, close the socket, loop and try again
-            debug_msg("closing socket");
+            $this->debug_msg("closing socket");
             @fclose($this->sock); $this->sock=NULL;
         }
     }
@@ -376,14 +383,16 @@ class AMQPConnection extends AbstractChannel
 
         if($this->sock)
         {
-            debug_msg("closing socket");
+            $this->debug_msg("closing socket");
             @fclose($this->sock);
         }
     }
 
     protected function write($data)
     {
-        debug_msg("< [hex]:\n" . hexdump($data, $htmloutput = false, $uppercase = true, $return = true));
+        if ($this->debug) {
+            $this->debug_msg("< [hex]:\n" . hexdump($data, $htmloutput = false, $uppercase = true, $return = true));
+        }
         
         $len = strlen($data);
         while(true)
@@ -411,7 +420,7 @@ class AMQPConnection extends AbstractChannel
         
         if($this->sock)
         {
-            debug_msg("closing socket");
+            $this->debug_msg("closing socket");
             @fclose($this->sock);
             $this->sock = NULL;
         }
@@ -482,7 +491,7 @@ class AMQPConnection extends AbstractChannel
         $this->write($pkt);
 
         global $METHOD_NAME_MAP;            
-        debug_msg("< " . methodSig($method_sig) . ": " . $METHOD_NAME_MAP[methodSig($method_sig)]);
+        $this->debug_msg("< " . methodSig($method_sig) . ": " . $METHOD_NAME_MAP[methodSig($method_sig)]);
     }
 
     /**
@@ -629,7 +638,7 @@ class AMQPConnection extends AbstractChannel
     protected function open_ok($args)
     {
         $this->known_hosts = $args->read_shortstr();
-        debug_msg("Open OK! known_hosts: " . $this->known_hosts);
+        $this->debug_msg("Open OK! known_hosts: " . $this->known_hosts);
         return NULL;
     }
 
@@ -641,7 +650,7 @@ class AMQPConnection extends AbstractChannel
     {
         $host = $args->read_shortstr();
         $this->known_hosts = $args->read_shortstr();
-        debug_msg("Redirected to [". $host . "], known_hosts [" . $this->known_hosts . "]" );
+        $this->debug_msg("Redirected to [". $host . "], known_hosts [" . $this->known_hosts . "]" );
         return $host;
     }
 
@@ -674,7 +683,7 @@ class AMQPConnection extends AbstractChannel
         $this->mechanisms = explode(" ", $args->read_longstr());
         $this->locales = explode(" ", $args->read_longstr());
 
-        debug_msg(sprintf("Start from server, version: %d.%d, properties: %s, mechanisms: %s, locales: %s",
+        $this->debug_msg(sprintf("Start from server, version: %d.%d, properties: %s, mechanisms: %s, locales: %s",
                           $this->version_major,
                           $this->version_minor,
                           self::dump_table($this->server_properties),
@@ -759,7 +768,7 @@ class AMQPChannel extends AbstractChannel
 
         if($channel_id == NULL)
             $channel_id = $connection->get_free_channel_id();
-        debug_msg("using channel_id: " . $channel_id);
+        $this->debug_msg("using channel_id: " . $channel_id);
 
         parent::__construct($connection, $channel_id);
 
@@ -896,7 +905,7 @@ class AMQPChannel extends AbstractChannel
     protected function open_ok($args)
     {
         $this->is_open = true;
-        debug_msg("Channel open");
+        $this->debug_msg("Channel open");
     }
 
     /**

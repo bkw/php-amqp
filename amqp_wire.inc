@@ -50,41 +50,14 @@ class AMQPWriter
         $this->bits = array();
         $this->bitcount = 0;
     }
-
-    private static function chrbytesplit($x, $bytes)
-    {
-        return array_map('chr', AMQPWriter::bytesplit($x,$bytes));
-    }
-
-    /**
-     * Splits number (could be either int or string) into array of byte
-     * values (represented as integers) in big-endian byte order.
-     */
-    private static function bytesplit($x, $bytes)
-    {
-        if(is_int($x))
-        {
-            if($x<0)
-                $x = sprintf("%u", $x);
-        }
-                
-        $res = array();
-        for($i=0;$i<$bytes;$i++)
-        {
-            $b = bcmod($x,'256');
-            array_unshift($res,(int)$b);
-            $x=bcdiv($x,'256');
-        }
-        if($x!=0)
-            throw new Exception("Value too big!");
-        return $res;
-    }
     
     private function flushbits()
     {
-        if(count($this->bits))
+        if(!empty($this->bits))
         {
-            $this->out .= implode("", array_map('chr',$this->bits));
+            foreach($this->bits as $bit) {
+                $this->out .= chr($bit);
+            }
             $this->bits = array();
             $this->bitcount = 0;
         }
@@ -124,7 +97,7 @@ class AMQPWriter
             $last = array_pop($this->bits);
         
         $last |= ($b << $shift);
-        array_push($this->bits, $last);
+        $this->bits[] = $last;
             
         $this->bitcount += 1;
     }
@@ -157,7 +130,7 @@ class AMQPWriter
     public function write_long($n)
     {
         $this->flushbits();
-        $this->out .= implode("", AMQPWriter::chrbytesplit($n,4));
+        $this->out .= pack('N', $n);
     }
 
     private function write_signed_long($n)
@@ -174,7 +147,11 @@ class AMQPWriter
     public function write_longlong($n)
     {
         $this->flushbits();
-        $this->out .= implode("", AMQPWriter::chrbytesplit($n,8));
+        $c = '4294967296'; // 2^32
+        $b = bcmod($n, $c);
+        $a = bcdiv($n, $c);
+        $this->out .= pack('N', (double)$a);
+        $this->out .= pack('N', (double)$b);
     }
 
     /**
@@ -184,7 +161,7 @@ class AMQPWriter
     public function write_shortstr($s)
     {
         $this->flushbits();
-        if(strlen($s) > 255)
+        if (isset($s{256})) // faster than if(strlen($s) > 255)
             throw new Exception('String too long');
         $this->write_octet(strlen($s));
         $this->out .= $s;
@@ -553,8 +530,10 @@ class GenericContent
                 $flag_bits = array_shift($flags);
                 $shift = 15;
             }
-            if($flag_bits & (1 << $shift))
-                $d[$key] = call_user_func(array($r,"read_".$proptype));
+            if($flag_bits & (1 << $shift)) {
+                $method = 'read_'.$proptype;
+                $d[$key] = $r->$method();
+            }
             $shift -= 1;
         }
         $this->properties = $d;
@@ -574,7 +553,7 @@ class GenericContent
         $raw_bytes = new AMQPWriter();
         foreach ($this->prop_types as $key => $proptype)
         {
-            if(array_key_exists($key,$this->properties))
+            if(isset($this->properties[$key]))
                 $val = $this->properties[$key];
             else
                 $val = NULL;
@@ -582,19 +561,20 @@ class GenericContent
             {
                 if($shift == 0)
                 {
-                    array_push($flags, $flag_bits);
+                    $flags[] = $flag_bits;
                     $flag_bits = 0;
                     $shift = 15;
                 }
                 
                 $flag_bits |= (1 << $shift);
-                if($proptype != "bit")
-                    call_user_func(array($raw_bytes, "write_" . $proptype),
-                                   $val);
+                if($proptype != "bit") {
+                    $method = 'write_'.$proptype;
+                    $raw_bytes->$method($val);
+                }
             }
             $shift -= 1;
         }
-        array_push($flags, $flag_bits);
+        $flags[] = $flag_bits;
         $result = new AMQPWriter();
         foreach($flags as $flag_bits)
             $result->write_short($flag_bits);
