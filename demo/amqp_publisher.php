@@ -1,11 +1,11 @@
-#!/usr/bin/php
+#!/usr/bin/env php
 <?php
 /**
  * Sends a message to a queue
  *
  * @author Sean Murphy<sean@iamseanmurphy.com>
  */
- 
+
 require_once('../amqp.inc');
 
 $HOST = 'localhost';
