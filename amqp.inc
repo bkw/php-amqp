@@ -1,31 +1,26 @@
 <?php
-/**
- * Simple AMQP client library for AMQP for protocol version 0.8
- *
- * http://code.google.com/p/php-amqplib/
- *
+  /**
+   * Simple AMQP client library for AMQP for protocol version 0.8
+   *
+   * http://code.google.com/p/php-amqplib/
+   *
  * @category   AMQP
  * @package    AMQP
  * @license    http://www.gnu.org/licenses/lgpl.html     GNU Lesser General Public License
  * @author Vadim Zaliva <lord@crocodile.org>
- */
+   */
 
 require_once('amqp_wire.inc');
 require_once('hexdump.inc');
-
-function debug_msg($s)
-{
-    error_log($s);
-}
 
 function methodSig($a)
 {
     if(is_string($a))
         return $a;
     else
-        return sprintf("%d,%d",$a[0] ,$a[1]);
+        return $a[0].','.$a[1];
 }
-    
+
 class AMQPException extends Exception
 {
     public function __construct($reply_code, $reply_text, $method_sig)
@@ -54,7 +49,7 @@ class AMQPException extends Exception
 class AMQPConnectionException extends AMQPException
 {
     
-}
+    }
 
 class AMQPChannelException extends AMQPException
 {
@@ -135,6 +130,10 @@ class AbstractChannel
         "20,40", // Channel.close
     );
     /**
+     * @var boolean
+     */
+    private $debug;
+    /**
      * @var AMQPConnection
      */
     var $connection;
@@ -180,7 +179,7 @@ class AbstractChannel
     {
         if(!array_key_exists($method_sig, $this->METHOD_MAP))
             throw new Exception("Unknown AMQP method $method_sig");
-        
+
         $amqp_method = $this->METHOD_MAP[$method_sig];
         if($content == NULL)
             return call_user_func(array($this,$amqp_method), $args);
@@ -190,12 +189,12 @@ class AbstractChannel
 
     function next_frame()
     {
-        debug_msg("waiting for a new frame");
+        $this->debug_msg("waiting for a new frame");
         if($this->frame_queue != NULL)
             return array_pop($this->frame_queue);
         return $this->connection->wait_channel($this->channel_id);
     }
-    
+
     protected function send_method_frame($method_sig, $args="")
     {
         $this->connection->send_channel_method_frame($this->channel_id, $method_sig, $args);
@@ -238,13 +237,13 @@ class AbstractChannel
             {
                 $msg->body = $msg->body->decode($msg->content_encoding);
             } catch (Exception $e) {
-                debug_msg("Ignoring body decoding exception: " . $e->getMessage());
+                $this->debug_msg("Ignoring body decoding exception: " . $e->getMessage());
             }
         }
-        
+
         return $msg;
     }
-    
+
     /**
      * Wait for some expected AMQP methods and dispatch to them.
      * Unexpected methods are queued up for later calls to this Python
@@ -256,66 +255,76 @@ class AbstractChannel
     public function wait($allowed_methods=NULL)
     {
         if($allowed_methods)
-            debug_msg("waiting for " . implode(", ", $allowed_methods));
+            $this->debug_msg("waiting for " . implode(", ", $allowed_methods));
         else
-            debug_msg("waiting for any method");
+            $this->debug_msg("waiting for any method");
 
         //Process deferred methods
         foreach($this->method_queue as $qk=>$queued_method)
         {
-            debug_msg("checking queue method " . $qk);
+            $this->debug_msg("checking queue method " . $qk);
             $method_sig = $queued_method[0];
             if($allowed_methods==NULL || in_array($method_sig, $allowed_methods))
             {
                 unset($this->method_queue[$qk]);
-                debug_msg("Executing queued method: $method_sig: " .
+                $this->debug_msg("Executing queued method: $method_sig: " .
                           $METHOD_NAME_MAP[methodSig($method_sig)]);
-                
+
                 return $this->dispatch($queued_method[0],
                                        $queued_method[1],
                                        $queued_method[2]);
             }
         }
-        
+
         // No deferred methods?  wait for new ones
         while(true)
         {
             $frm = $this->next_frame();
             $frame_type = $frm[0];
             $payload = $frm[1];
-            
+
             if($frame_type != 1)
                 throw new Exception("Expecting AMQP method, received frame type: $frame_type");
 
             if(strlen($payload) < 4)
                 throw new Exception("Method frame too short");
-            
+
             $method_sig_array = unpack("n2", substr($payload,0,4));
-            $method_sig = "" . $method_sig_array[1] . "," . $method_sig_array[2]; 
+            $method_sig = "" . $method_sig_array[1] . "," . $method_sig_array[2];
             $args = new AMQPReader(substr($payload,4));
 
-            global $METHOD_NAME_MAP;            
-            debug_msg("> $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
-            
+            global $METHOD_NAME_MAP;
+            $this->debug_msg("> $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
+
             if(in_array($method_sig, AbstractChannel::$CONTENT_METHODS))
                 $content = $this->wait_content();
             else
                 $content = NULL;
-            
+
             if($allowed_methods==NULL ||
                in_array($method_sig,$allowed_methods) ||
                in_array($method_sig,AbstractChannel::$CLOSE_METHODS))
             {
                 return $this->dispatch($method_sig, $args, $content);
             }
-            
+
             // Wasn't what we were looking for? save it for later
-            global $METHOD_NAME_MAP;            
-            debug_msg("Queueing for later: $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
+            global $METHOD_NAME_MAP;
+            $this->debug_msg("Queueing for later: $method_sig: " . $METHOD_NAME_MAP[methodSig($method_sig)]);
             array_push($this->method_queue,array($method_sig, $args, $content));
         }
     }
-    
+
+    public function debug($flag) {
+        $this->debug = ($flag) ? true:false;
+    }
+
+    public function debug_msg($msg) {
+        if ($this->debug) {
+            error_log($msg);
+        }
+    }
+
 }
 
 class AMQPConnection extends AbstractChannel
@@ -324,7 +333,7 @@ class AMQPConnection extends AbstractChannel
      * @var string
      */
     public static $AMQP_PROTOCOL_HEADER = "AMQP\x01\x01\x09\x01";
-    
+
     /**
      * @var array
      */
@@ -344,7 +353,7 @@ class AMQPConnection extends AbstractChannel
         "10,60" => "_close",
         "10,61" => "close_ok"
     );
-    
+
     /**
      * @var AMQPReader
      */
@@ -384,7 +393,7 @@ class AMQPConnection extends AbstractChannel
             $login_response = substr($login_response->getvalue(),4); //Skip the length
         } else
             $login_response = NULL;
-        
+
 
         $d = AMQPConnection::$LIBRARY_PROPERTIES;
         while(true)
@@ -392,7 +401,7 @@ class AMQPConnection extends AbstractChannel
             $this->channels = array();
             // The connection object itself is treated as channel 0
             parent::__construct($this, 0);
-            
+
             $this->channel_max = 65535;
             $this->frame_max = 131072;
 
@@ -407,9 +416,9 @@ class AMQPConnection extends AbstractChannel
             $this->input = new AMQPReader(null, $this->sock);
 
             $this->write(AMQPConnection::$AMQP_PROTOCOL_HEADER);
-            $this->wait(array("10,10"));        
+            $this->wait(array("10,10"));
             $this->x_start_ok($d, $login_method, $login_response, $locale);
-        
+
             $this->wait_tune_ok = true;
             while($this->wait_tune_ok)
             {
@@ -424,7 +433,7 @@ class AMQPConnection extends AbstractChannel
                 return; // we weren't redirected
 
             // we were redirected, close the socket, loop and try again
-            debug_msg("closing socket");
+            $this->debug_msg("closing socket");
             @fclose($this->sock); $this->sock=NULL;
         }
     }
@@ -441,7 +450,7 @@ class AMQPConnection extends AbstractChannel
 
         if($this->sock)
         {
-            debug_msg("closing socket");
+            $this->debug_msg("closing socket");
             @fclose($this->sock);
         }
     }
@@ -453,8 +462,10 @@ class AMQPConnection extends AbstractChannel
      */
     protected function write($data)
     {
-        debug_msg("< [hex]:\n" . hexdump($data, $htmloutput = false, $uppercase = true, $return = true));
-        
+        if ($this->debug) {
+            $this->debug_msg("< [hex]:\n" . hexdump($data, $htmloutput = false, $uppercase = true, $return = true));
+        }
+
         $len = strlen($data);
         while(true)
         {
@@ -482,10 +493,10 @@ class AMQPConnection extends AbstractChannel
                 $this->input->close();
                 $this->input = NULL;
             }
-        
+
         if($this->sock)
         {
-            debug_msg("closing socket");
+            $this->debug_msg("closing socket");
             @fclose($this->sock);
             $this->sock = NULL;
         }
@@ -530,7 +541,7 @@ class AMQPConnection extends AbstractChannel
         $pkt->write_octet(0xCE);
         $pkt = $pkt->getvalue();
         $this->write($pkt);
-        
+
         while($body)
         {
             $payload = substr($body,0, $this->frame_max-8);
@@ -540,9 +551,9 @@ class AMQPConnection extends AbstractChannel
             $pkt->write_octet(3);
             $pkt->write_short($channel);
             $pkt->write_long(strlen($payload));
-            
+
             $pkt->write($payload);
-            
+
             $pkt->write_octet(0xCE);
             $pkt = $pkt->getvalue();
             $this->write($pkt);
@@ -569,8 +580,8 @@ class AMQPConnection extends AbstractChannel
         $pkt = $pkt->getvalue();
         $this->write($pkt);
 
-        global $METHOD_NAME_MAP;            
-        debug_msg("< " . methodSig($method_sig) . ": " . $METHOD_NAME_MAP[methodSig($method_sig)]);
+        global $METHOD_NAME_MAP;
+        $this->debug_msg("< " . methodSig($method_sig) . ": " . $METHOD_NAME_MAP[methodSig($method_sig)]);
     }
 
     /**
@@ -587,11 +598,11 @@ class AMQPConnection extends AbstractChannel
         $channel = $this->input->read_short();
         $size = $this->input->read_long();
         $payload = $this->input->read($size);
-        
+
         $ch = $this->input->read_octet();
         if($ch != 0xCE)
             throw new Exception(sprintf("Framing error, unexpected byte: %x", $ch));
-        
+
         return array($frame_type, $channel, $payload);
     }
 
@@ -614,7 +625,7 @@ class AMQPConnection extends AbstractChannel
             //for later, when the other channel is looking for frames.
             array_push($this->channels[$frame_channel]->frame_queue,
                        array($frame_type, $payload));
-            
+
             // If we just queued up a method for channel 0 (the Connection
             // itself) it's probably a close method in reaction to some
             // error, so deal with it right away.
@@ -635,7 +646,7 @@ class AMQPConnection extends AbstractChannel
     {
         if(array_key_exists($channel_id,$this->channels))
             return $this->channels[$channel_id];
-        
+
         return new AMQPChannel($this->connection, $channel_id);
     }
 
@@ -693,7 +704,7 @@ class AMQPConnection extends AbstractChannel
         $method_id = $args->read_short();
 
         $this->x_close_ok();
-        
+
         throw new AMQPConnectionException($reply_code, $reply_text, array($class_id, $method_id));
     }
 
@@ -738,7 +749,7 @@ class AMQPConnection extends AbstractChannel
     protected function open_ok($args)
     {
         $this->known_hosts = $args->read_shortstr();
-        debug_msg("Open OK! known_hosts: " . $this->known_hosts);
+        $this->debug_msg("Open OK! known_hosts: " . $this->known_hosts);
         return NULL;
     }
 
@@ -750,7 +761,7 @@ class AMQPConnection extends AbstractChannel
     {
         $host = $args->read_shortstr();
         $this->known_hosts = $args->read_shortstr();
-        debug_msg("Redirected to [". $host . "], known_hosts [" . $this->known_hosts . "]" );
+        $this->debug_msg("Redirected to [". $host . "], known_hosts [" . $this->known_hosts . "]" );
         return $host;
     }
 
@@ -783,15 +794,15 @@ class AMQPConnection extends AbstractChannel
         $this->mechanisms = explode(" ", $args->read_longstr());
         $this->locales = explode(" ", $args->read_longstr());
 
-        debug_msg(sprintf("Start from server, version: %d.%d, properties: %s, mechanisms: %s, locales: %s",
+        $this->debug_msg(sprintf("Start from server, version: %d.%d, properties: %s, mechanisms: %s, locales: %s",
                           $this->version_major,
                           $this->version_minor,
                           self::dump_table($this->server_properties),
                           implode(', ', $this->mechanisms),
                           implode(', ', $this->locales)));
     }
-    
-    
+
+
     protected function x_start_ok($client_properties, $mechanism, $response, $locale)
     {
         $args = new AMQPWriter();
@@ -869,18 +880,18 @@ class AMQPChannel extends AbstractChannel
      * @return void
      */
     public function __construct(AMQPConnection $connection,
-                                $channel_id = NULL,
+                                $channel_id=NULL,
                                 $auto_decode=true)
     {
 
         if($channel_id == NULL)
             $channel_id = $connection->get_free_channel_id();
-        debug_msg("using channel_id: " . $channel_id);
+        $this->debug_msg("using channel_id: " . $channel_id);
 
         parent::__construct($connection, $channel_id);
 
         $this->METHOD_MAP = AMQPChannel::$METHOD_MAP;
-        
+
         $this->default_ticket = 0;
         $this->is_open = false;
         $this->active = true; // Flow control
@@ -952,11 +963,11 @@ class AMQPChannel extends AbstractChannel
 
         $this->send_method_frame(array(20, 41));
         $this->do_close();
-        
+
         throw new AMQPChannelException($reply_code, $reply_text,
                                        array($class_id, $method_id));
     }
-    
+
     /**
      * confirm a channel close
      */
@@ -995,12 +1006,12 @@ class AMQPChannel extends AbstractChannel
     {
         return $args->read_bit();
     }
-    
+
     protected function x_open($out_of_band="")
     {
         if($this->is_open)
             return;
-        
+
         $args = new AMQPWriter();
         $args->write_shortstr($out_of_band);
         $this->send_method_frame(array(20, 10), $args);
@@ -1008,11 +1019,11 @@ class AMQPChannel extends AbstractChannel
                                "20,11"    //Channel.open_ok
                            ));
     }
-    
+
     protected function open_ok($args)
     {
         $this->is_open = true;
-        debug_msg("Channel open");
+        $this->debug_msg("Channel open");
     }
 
     /**
@@ -1054,7 +1065,7 @@ class AMQPChannel extends AbstractChannel
         $this->default_ticket = $args->read_short();
         return $this->default_ticket;
     }
-        
+
 
     /**
      * declare exchange, create if needed
@@ -1082,7 +1093,7 @@ class AMQPChannel extends AbstractChannel
     {
         if($arguments==NULL)
             $arguments = array();
-        
+
         $args = new AMQPWriter();
         if($ticket != NULL)
             $args->write_short($ticket);
@@ -1225,7 +1236,7 @@ class AMQPChannel extends AbstractChannel
             return $this->wait(array(
                                    "50,11"    // Channel.queue_declare_ok
                                ));
-    }        
+    }
 
     /**
      * confirms a queue definition
@@ -1235,7 +1246,7 @@ class AMQPChannel extends AbstractChannel
         $queue = $args->read_shortstr();
         $message_count = $args->read_long();
         $consumer_count = $args->read_long();
-        
+
         return array($queue, $message_count, $consumer_count);
     }
 
@@ -1367,7 +1378,7 @@ class AMQPChannel extends AbstractChannel
             $consumer_tag = $this->wait(array(
                                             "60,21"    //Channel.basic_consume_ok
                                         ));
-        
+
         $this->callbacks[$consumer_tag] = $callback;
         return $consumer_tag;
     }
@@ -1394,7 +1405,7 @@ class AMQPChannel extends AbstractChannel
         $redelivered = $args->read_bit();
         $exchange = $args->read_shortstr();
         $routing_key = $args->read_shortstr();
-        
+
         $msg->delivery_info = array(
             "channel" => $this,
             "consumer_tag" => $consumer_tag,
@@ -1409,7 +1420,7 @@ class AMQPChannel extends AbstractChannel
         } else {
             $func = NULL;
         }
-        
+
         if($func!=NULL)
             call_user_func($func, $msg);
     }
@@ -1494,13 +1505,13 @@ class AMQPChannel extends AbstractChannel
         $args->write_bit($mandatory);
         $args->write_bit($immediate);
         $this->send_method_frame(array(60, 40), $args);
-        
+
         $this->connection->send_content($this->channel_id, 60, 0,
                                         strlen($msg->body),
                                         $msg->serialize_properties(),
                                         $msg->body);
     }
-        
+
 
     /**
      * specify quality of service
@@ -1564,8 +1575,8 @@ class AMQPChannel extends AbstractChannel
     protected function tx_commit_ok($args)
     {
     }
-    
-    
+
+
     /**
      * abandon the current transaction
      */
