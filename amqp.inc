@@ -358,6 +358,12 @@ class AMQPConnection extends AbstractChannel
      * @var AMQPReader
      */
     protected $input;
+
+    /**
+     * @var boolean
+     */
+    protected $debug = false;
+
     /**
      * Connect to AMQP server
      * 
