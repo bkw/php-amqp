@@ -1,11 +1,14 @@
 <?php
-  /**
-   * Simple AMQP client library for AMQP for protocol version 0.8
-   *
-   * http://code.google.com/p/php-amqplib/
-   * Vadim Zaliva <lord@crocodile.org>
-   *
-   */
+/**
+ * Simple AMQP client library for AMQP for protocol version 0.8
+ *
+ * http://code.google.com/p/php-amqplib/
+ *
+ * @category   AMQP
+ * @package    AMQP
+ * @license    http://www.gnu.org/licenses/lgpl.html     GNU Lesser General Public License
+ * @author Vadim Zaliva <lord@crocodile.org>
+ */
 
 require_once('amqp_wire.inc');
 require_once('hexdump.inc');
@@ -23,7 +26,6 @@ function methodSig($a)
         return sprintf("%d,%d",$a[0] ,$a[1]);
 }
     
-
 class AMQPException extends Exception
 {
     public function __construct($reply_code, $reply_text, $method_sig)
@@ -51,18 +53,11 @@ class AMQPException extends Exception
 
 class AMQPConnectionException extends AMQPException
 {
-    public function __construct($reply_code, $reply_text, $method_sig)
-    {
-        parent::__construct($reply_code, $reply_text, $method_sig);
-    }
+    
 }
 
 class AMQPChannelException extends AMQPException
 {
-    public function __construct($reply_code, $reply_text, $method_sig)
-    {
-        parent::__construct($reply_code, $reply_text, $method_sig);
-    }
 
 }
 
@@ -125,17 +120,46 @@ $METHOD_NAME_MAP = array(
 
 class AbstractChannel
 {
+    /**
+     * @var array
+     */
     private static $CONTENT_METHODS = array(
         "60,60", // Basic.deliver
         "60,71", // Basic.get_ok
     );
-    
+    /**
+     * @var array
+     */
     private static $CLOSE_METHODS = array(
         "10,60", // Connection.close
         "20,40", // Channel.close
     );
-
-    public function __construct($connection, $channel_id)
+    /**
+     * @var AMQPConnection
+     */
+    var $connection;
+    /**
+     * @var int
+     */
+    var $channel_id;
+    /**
+     * @var array
+     */
+    var $frame_queue;
+    /**
+     * @var array
+     */
+    var $method_queue;
+    /**
+     * @var bool
+     */
+    var $auto_decode;
+    /**
+     * @param AMQPConnection $connection
+     * @param int $channel_id
+     * @return void
+     */
+    public function __construct(AMQPConnection $connection, $channel_id)
     {
         $this->connection = $connection;
         $this->channel_id = $channel_id;
@@ -145,7 +169,13 @@ class AbstractChannel
         $this->auto_decode = false;
     }
 
-
+    /**
+     * 
+     * @param string $method_sig Method to call on remote server
+     * @param array $args
+     * @param string $content
+     * @return mixed
+     */
     function dispatch($method_sig, $args, $content)
     {
         if(!array_key_exists($method_sig, $this->METHOD_MAP))
@@ -219,6 +249,9 @@ class AbstractChannel
      * Wait for some expected AMQP methods and dispatch to them.
      * Unexpected methods are queued up for later calls to this Python
      * method.
+     * 
+     * @param array $allowed_methods Methods to wait for, null waits for any method
+     * @return mixed
      */
     public function wait($allowed_methods=NULL)
     {
@@ -287,13 +320,21 @@ class AbstractChannel
 
 class AMQPConnection extends AbstractChannel
 {
+    /**
+     * @var string
+     */
     public static $AMQP_PROTOCOL_HEADER = "AMQP\x01\x01\x09\x01";
     
+    /**
+     * @var array
+     */
     public static $LIBRARY_PROPERTIES = array(
         "library" => array('S', "PHP Simple AMQP lib"),
         "library_version" => array('S', "0.1")
     );
-
+    /**
+     * @var array
+     */
     protected static $METHOD_MAP = array(
         "10,10" => "start",
         "10,20" => "secure",
@@ -304,11 +345,31 @@ class AMQPConnection extends AbstractChannel
         "10,61" => "close_ok"
     );
     
+    /**
+     * @var AMQPReader
+     */
+    protected $input;
+    /**
+     * Connect to AMQP server
+     * 
+     * @param string $host Server host
+     * @param int $port Server port
+     * @param string $user 
+     * @param string $password
+     * @param string $vhost
+     * @param bool $insist
+     * @param string $login_method
+     * @param AMQPWriter $login_response
+     * @param string $locale
+     * @param int $connection_timeout
+     * @param int $read_write_timeout
+     * @return void
+     */
     public function __construct($host, $port,
                                 $user, $password,
                                 $vhost="/",$insist=false,
                                 $login_method="AMQPLAIN",
-                                $login_response=NULL,
+                                AMQPWriter $login_response=NULL,
                                 $locale="en_US",
                                 $connection_timeout = 10,
                                 $read_write_timeout = 3)
@@ -367,7 +428,11 @@ class AMQPConnection extends AbstractChannel
             @fclose($this->sock); $this->sock=NULL;
         }
     }
-   
+    /**
+     * Disconnect from server
+     * 
+     * @return void
+     */
     public function __destruct()
     {
         if(isset($this->input))
@@ -380,7 +445,12 @@ class AMQPConnection extends AbstractChannel
             @fclose($this->sock);
         }
     }
-
+    /**
+     * Write data on  socket
+     * 
+     * @param string $data
+     * @return void
+     */
     protected function write($data)
     {
         debug_msg("< [hex]:\n" . hexdump($data, $htmloutput = false, $uppercase = true, $return = true));
@@ -388,7 +458,7 @@ class AMQPConnection extends AbstractChannel
         $len = strlen($data);
         while(true)
         {
-            if(false == ($written = fwrite($this->sock, $data)))
+            if(false === ($written = fwrite($this->sock, $data)))
             {
                 throw new Exception ("Error sending data");
             }
@@ -399,7 +469,11 @@ class AMQPConnection extends AbstractChannel
                 break;
         }
     }
-    
+    /**
+     * Disconnect from server
+     * 
+     * @return void
+     */
     protected function do_close()
     {
         if(isset($this->input))
@@ -416,7 +490,11 @@ class AMQPConnection extends AbstractChannel
             $this->sock = NULL;
         }
     }
-
+    /**
+     * Find a free channel id
+     * 
+     * @return int Available channel id
+     */
     public function get_free_channel_id()
     {
         for($i=1;$i<=$this->channel_max;$i++)
@@ -424,7 +502,17 @@ class AMQPConnection extends AbstractChannel
                 return $i;
         throw new Exception("No free channel ids");
     }
-
+    /**
+     * Send content on channel
+     * 
+     * @param int $channel Channel ID
+     * @param int $class_id
+     * @param int $weight
+     * @param int $body_size
+     * @param string $packed_properties
+     * @param string $body
+     * @return void
+     */
     public function send_content($channel, $class_id, $weight, $body_size,
                         $packed_properties, $body)
     {
@@ -487,10 +575,15 @@ class AMQPConnection extends AbstractChannel
 
     /**
      * Wait for a frame from the server
+     * 
+     * @return array
+     * @throws Exception On Framing error
      */
     protected function wait_frame()
     {
+        
         $frame_type = $this->input->read_octet();
+        
         $channel = $this->input->read_short();
         $size = $this->input->read_long();
         $payload = $this->input->read($size);
@@ -505,15 +598,18 @@ class AMQPConnection extends AbstractChannel
     /**
      * Wait for a frame from the server destined for
      * a particular channel.
+     * 
+     * @param int $channel_id
+     * @return array
      */
     protected function wait_channel($channel_id)
     {
         while(true)
         {
             list($frame_type, $frame_channel, $payload) = $this->wait_frame();
+            
             if($frame_channel == $channel_id)
                 return array($frame_type, $payload);
-
             // Not the channel we were looking for.  Queue this frame
             //for later, when the other channel is looking for frames.
             array_push($this->channels[$frame_channel]->frame_queue,
@@ -524,12 +620,16 @@ class AMQPConnection extends AbstractChannel
             // error, so deal with it right away.
             if(($frame_type == 1) && ($frame_channel == 0))
                 $this->wait();
+                
         }
     }
 
     /**
      * Fetch a Channel object identified by the numeric channel_id, or
      * create that object if it doesn't already exist.
+     * 
+     * @param int $channel_id Channel number
+     * @return AMQPCHannel
      */
     public function channel($channel_id=NULL)
     {
@@ -578,7 +678,13 @@ class AMQPConnection extends AbstractChannel
         return implode(', ', $tokens);
 
     }
-
+    /**
+     * Server force a close on client
+     * 
+     * @param AMQPReader $args
+     * @return void
+     * @throws AMQPConnectionException
+     */
     protected function _close($args)
     {
         $reply_code = $args->read_short();
@@ -625,6 +731,9 @@ class AMQPConnection extends AbstractChannel
 
     /**
      * signal that the connection is ready
+     * 
+     * @param AMQPReader $args 
+     * @return NULL
      */
     protected function open_ok($args)
     {
@@ -751,9 +860,16 @@ class AMQPChannel extends AbstractChannel
         "90,21" => "tx_commit_ok",
         "90,31" => "tx_rollback_ok"
     );
-    
-    public function __construct($connection,
-                                $channel_id=NULL,
+    /**
+     * AMQPChannel constructor
+     * 
+     * @param AMQPConnection $connection Connection to AMQP server
+     * @param int $channel_id Channel number
+     * @param bool $auto_decode 
+     * @return void
+     */
+    public function __construct(AMQPConnection $connection,
+                                $channel_id = NULL,
                                 $auto_decode=true)
     {
 
@@ -901,6 +1017,14 @@ class AMQPChannel extends AbstractChannel
 
     /**
      * request an access ticket
+     * 
+     * @param string $realm Virtual host
+     * @param bool $exclusive
+     * @param bool $passive
+     * @param bool $active
+     * @param bool $write
+     * @param bool $read
+     * @return mixed
      */
     public function access_request($realm, $exclusive=false,
         $passive=false, $active=false, $write=false, $read=false)
@@ -920,6 +1044,10 @@ class AMQPChannel extends AbstractChannel
 
     /**
      * grant access to server resources
+     * 
+     * @param AMQPReader $args
+     * 
+     * @return short
      */
     protected function access_request_ok($args)
     {
@@ -930,6 +1058,17 @@ class AMQPChannel extends AbstractChannel
 
     /**
      * declare exchange, create if needed
+     * 
+     * @param string $exchange Name of the exchange
+     * @param string $type Either fanout, direct or topic
+     * @param bool $passive
+     * @param bool $durable
+     * @param bool $auto_delete
+     * @param bool $internal
+     * @param bool $nowait
+     * @param array $arguments
+     * @param short $ticket
+     * @return mixed
      */
     public function exchange_declare($exchange,
                                      $type,
@@ -1001,9 +1140,16 @@ class AMQPChannel extends AbstractChannel
     {
     }
 
-
     /**
      * bind queue to an exchange
+     * 
+     * @param string $queue Queue name
+     * @param string $exchange Exchange name
+     * @param string $routing_key Routing key
+     * @param bool $nowait
+     * @param array $arguments
+     * @param short $ticket
+     * @return mixed
      */
     public function queue_bind($queue, $exchange, $routing_key="",
         $nowait=false, $arguments=NULL, $ticket=NULL)
@@ -1038,6 +1184,16 @@ class AMQPChannel extends AbstractChannel
 
     /**
      * declare queue, create if needed
+     * 
+     * @param string $queue Queue name
+     * @param bool $passive 
+     * @param bool $durable If set to true, the queue will be re-created on server reboot
+     * @param bool $exclusive If set to true, only the consumer that creates the queue will be allowed to attach to it
+     * @param bool $auto_delete If set to true, the queue will disappear when the last consumer detaches (regardless of the durable flag)
+     * @param bool $nowait
+     * @param array $arguments
+     * @param short $ticket
+     * @return mixed
      */
     public function  queue_declare($queue="",
                                    $passive=false,
@@ -1179,6 +1335,16 @@ class AMQPChannel extends AbstractChannel
 
     /**
      * start a queue consumer
+     * 
+     * @param string $queue Queue name
+     * @param string $consumer_tag
+     * @param bool $no_local
+     * @param bool $no_ack
+     * @param bool $exclusive
+     * @param bool $nowait
+     * @param mixed $callback Function to callback
+     * @param short $ticket
+     * @return string Consumer tag
      */
     public function basic_consume($queue="", $consumer_tag="", $no_local=false,
                                   $no_ack=false, $exclusive=false, $nowait=false,
@@ -1216,8 +1382,12 @@ class AMQPChannel extends AbstractChannel
 
     /**
      * notify the client of a consumer message
+     * 
+     * @param AMQPReader $args
+     * @param AMQPMessage $msg
+     * @return void
      */
-    protected function basic_deliver($args, $msg)
+    protected function basic_deliver(AMQPReader $args, AMQPMessage $msg)
     {
         $consumer_tag = $args->read_shortstr();
         $delivery_tag = $args->read_longlong();
@@ -1234,10 +1404,11 @@ class AMQPChannel extends AbstractChannel
             "routing_key" => $routing_key
         );
 
-        if(array_key_exists($consumer_tag, $this->callbacks))
+        if(array_key_exists($consumer_tag, $this->callbacks)) {
             $func = $this->callbacks[$consumer_tag];
-        else
+        } else {
             $func = NULL;
+        }
         
         if($func!=NULL)
             call_user_func($func, $msg);
@@ -1245,6 +1416,11 @@ class AMQPChannel extends AbstractChannel
 
     /**
      * direct access to a queue
+     * 
+     * @param string $queue Queue name
+     * @param bool $no_ack No acknowledgment, if set to true, the server will wait for an acknowledgement of the message
+     * @param short $ticket
+     * @return AMQPMessage
      */
     public function basic_get($queue="", $no_ack=false, $ticket=NULL)
     {
@@ -1292,9 +1468,19 @@ class AMQPChannel extends AbstractChannel
     }
 
     /**
-     * publish a message
+     * publish a message0
      */
-    public function basic_publish($msg, $exchange="", $routing_key="",
+    /**
+     * 
+     * @param AMQPMessage $msg Message to send
+     * @param string $exchange
+     * @param string $routing_key
+     * @param bool $mandatory
+     * @param bool $immediate
+     * @param show $ticket
+     * @return mixed
+     */
+    public function basic_publish(AMQPMessage $msg, $exchange="", $routing_key="",
                                   $mandatory=false, $immediate=false,
                                   $ticket=NULL)
     {
