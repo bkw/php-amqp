@@ -5,10 +5,7 @@ if(!defined('SIMPLE_TEST'))
 require_once(SIMPLE_TEST . 'unit_tester.php');
 require_once(SIMPLE_TEST . 'reporter.php');
 
-if(((int)4294967296)!=0)
-    $arch_bits = "64bit";
-else
-    $arch_bits = "32bit";
+$arch_bits = (PHP_INT_SIZE*8)."bit";
 
 $test = &new TestSuite("PHP-AMQP tests ($arch_bits)");
 $test->addTestFile('wire_format_test.php');
