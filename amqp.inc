@@ -153,6 +153,12 @@ class AbstractChannel
      * @var bool
      */
     var $auto_decode;
+
+    /**
+     * @var array
+     */
+    protected static $METHOD_MAP = array();
+ 
     /**
      * @param AMQPConnection $connection
      * @param int $channel_id
@@ -177,10 +183,10 @@ class AbstractChannel
      */
     function dispatch($method_sig, $args, $content)
     {
-        if(!array_key_exists($method_sig, $this->METHOD_MAP))
+        if(!array_key_exists($method_sig, $this->method_map))
             throw new Exception("Unknown AMQP method $method_sig");
 
-        $amqp_method = $this->METHOD_MAP[$method_sig];
+        $amqp_method = $this->method_map[$method_sig];
         if($content == NULL)
             return call_user_func(array($this,$amqp_method), $args);
         else
@@ -389,7 +395,7 @@ class AMQPConnection extends AbstractChannel
                                 $connection_timeout = 10,
                                 $read_write_timeout = 3)
     {
-        $this->METHOD_MAP = AMQPConnection::$METHOD_MAP;
+        $this->method_map = AMQPConnection::$METHOD_MAP;
 
         if($user && $password)
         {
@@ -896,7 +902,7 @@ class AMQPChannel extends AbstractChannel
 
         parent::__construct($connection, $channel_id);
 
-        $this->METHOD_MAP = AMQPChannel::$METHOD_MAP;
+        $this->method_map = AMQPChannel::$METHOD_MAP;
 
         $this->default_ticket = 0;
         $this->is_open = false;
