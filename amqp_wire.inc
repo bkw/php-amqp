@@ -239,11 +239,6 @@ class AMQPReader
 
         $this->bitcount = $this->bits = 0;
 
-        if(((int)4294967296)!=0)
-            $this->is64bits = true;
-        else
-            $this->is64bits = false;
-
         if(!function_exists("bcmul"))
             throw new Exception("'bc math' module required");
     }
@@ -325,18 +320,14 @@ class AMQPReader
      * On 32 bit systems it will return signed int value in
      * -2^31...+2^31 range.
      *
+     * Callers MUST check for negative return values.
+     *
      * Use with caution!
      */
     public function read_php_int()
     {
         list(,$res) = unpack('N', $this->rawread(4));
-        if($this->is64bits)
-        {
-            $sres = sprintf ( "%u", $res );
-            return (int)$sres;
-        } else {
-            return $res;
-        }
+        return $res;
     }
 
     // PHP does not have unsigned 32 bit int,
