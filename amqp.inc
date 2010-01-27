@@ -341,7 +341,7 @@ class AMQPConnection extends AbstractChannel
             {
                 throw new Exception ("Error Connecting to server($errno): $errstr ");
             }
-            stream_set_timeout($this->sock, $rw_timeout);
+            stream_set_timeout($this->sock,$read_write_timeout);
             stream_set_blocking($this->sock, 1);
             $this->input = new AMQPReader(null, $this->sock);
 
@@ -388,7 +388,7 @@ class AMQPConnection extends AbstractChannel
         $len = strlen($data);
         while(true)
         {
-            if(false == ($written = fwrite($this->sock, $data)))
+            if(false === ($written = fwrite($this->sock, $data)))
             {
                 throw new Exception ("Error sending data");
             }
