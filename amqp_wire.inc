@@ -465,7 +465,7 @@ class AMQPReader
             $ftype = $table_data->rawread(1);
             if($ftype == 'S') {
                 $val = $table_data->read_longstr();
-            } else if(ftype == 'I') {
+            } else if($ftype == 'I') {
                 $val = $table_data->read_signed_long();
             } else if($ftype == 'D')
             {
