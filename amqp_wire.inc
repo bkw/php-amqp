@@ -299,7 +299,8 @@ class AMQPReader
             $read = 0;
             
             $start = time();
-            while ($read < $n && (false !== ($buf = $this->sock->read($n - $read))) && ((time() - $start) < $this->buffer_read_timeout))
+            while($read < $n && !feof($this->sock) &&
+                  (false !== ($buf = fread($this->sock, $n - $read))))
             {
                 if ($buf == '')
                 {
