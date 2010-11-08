@@ -675,7 +675,7 @@ class BufferedInput
     {
         if(feof($this->sock))
         {
-            $this->reset($block);
+            $this->reset("");
             return FALSE;
         }
         
