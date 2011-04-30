@@ -240,7 +240,7 @@ class AMQPWriter
             {
                 $table_data->write('T');
                 $table_data->write_timestamp($v);
-            } else if($ftype='F')
+            } else if($ftype=='F')
             {
                 $table_data->write('F');
                 $table_data->write_table($v);
