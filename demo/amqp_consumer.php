@@ -1,4 +1,4 @@
-#!/usr/bin/php
+#!/usr/bin/env php
 <?php
 /**
  * Repeatedly receive messages from queue until it receives a message with
@@ -6,7 +6,7 @@
  *
  * @author Sean Murphy<sean@iamseanmurphy.com>
  */
- 
+
 require_once('../amqp.inc');
 
 $HOST = 'localhost';
@@ -28,13 +28,13 @@ $ch->queue_bind($QUEUE, $EXCHANGE);
 
 function process_message($msg) {
     global $ch, $CONSUMER_TAG;
-    
+
     echo "\n--------\n";
     echo $msg->body;
     echo "\n--------\n";
-    
+
     $ch->basic_ack($msg->delivery_info['delivery_tag']);
-    
+
     // Cancel callback
     if ($msg->body === 'quit') {
         $ch->basic_cancel($CONSUMER_TAG);

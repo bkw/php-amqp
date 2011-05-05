@@ -51,40 +51,13 @@ class AMQPWriter
         $this->bitcount = 0;
     }
 
-    private static function chrbytesplit($x, $bytes)
-    {
-        return array_map('chr', AMQPWriter::bytesplit($x,$bytes));
-    }
-
-    /**
-     * Splits number (could be either int or string) into array of byte
-     * values (represented as integers) in big-endian byte order.
-     */
-    private static function bytesplit($x, $bytes)
-    {
-        if(is_int($x))
-        {
-            if($x<0)
-                $x = sprintf("%u", $x);
-        }
-                
-        $res = array();
-        for($i=0;$i<$bytes;$i++)
-        {
-            $b = bcmod($x,'256');
-            array_unshift($res,(int)$b);
-            $x=bcdiv($x,'256', 0);
-        }
-        if($x!=0)
-            throw new Exception("Value too big!");
-        return $res;
-    }
-    
     private function flushbits()
     {
-        if(count($this->bits))
+        if(!empty($this->bits))
         {
-            $this->out .= implode("", array_map('chr',$this->bits));
+            foreach($this->bits as $bit) {
+                $this->out .= chr($bit);
+            }
             $this->bits = array();
             $this->bitcount = 0;
         }
@@ -122,10 +95,10 @@ class AMQPWriter
             $last = 0;
         else
             $last = array_pop($this->bits);
-        
+
         $last |= ($b << $shift);
-        array_push($this->bits, $last);
-            
+        $this->bits[] = $last;
+
         $this->bitcount += 1;
     }
 
@@ -157,7 +130,7 @@ class AMQPWriter
     public function write_long($n)
     {
         $this->flushbits();
-        $this->out .= implode("", AMQPWriter::chrbytesplit($n,4));
+        $this->out .= pack('N', $n);
     }
 
     private function write_signed_long($n)
@@ -174,7 +147,11 @@ class AMQPWriter
     public function write_longlong($n)
     {
         $this->flushbits();
-        $this->out .= implode("", AMQPWriter::chrbytesplit($n,8));
+        $c = '4294967296'; // 2^32
+        $b = bcmod($n, $c);
+        $a = bcdiv($n, $c);
+        $this->out .= pack('N', (double)$a);
+        $this->out .= pack('N', (double)$b);
     }
 
     /**
@@ -184,7 +161,7 @@ class AMQPWriter
     public function write_shortstr($s)
     {
         $this->flushbits();
-        if(strlen($s) > 255)
+        if (isset($s{256})) // faster than if(strlen($s) > 255)
             throw new Exception('String too long');
         $this->write_octet(strlen($s));
         $this->out .= $s;
@@ -268,11 +245,6 @@ class AMQPReader
 
         $this->bitcount = $this->bits = 0;
 
-        if(((int)4294967296)!=0)
-            $this->is64bits = true;
-        else
-            $this->is64bits = false;
-
         if(!function_exists("bcmul"))
             throw new Exception("'bc math' module required");
             
@@ -290,14 +262,14 @@ class AMQPReader
         $this->bitcount = $this->bits = 0;
         return $this->rawread($n);
     }
-    
+
     private function rawread($n)
     {
         if($this->sock)
         {
             $res = '';
             $read = 0;
-            
+
             $start = time();
             while($read < $n && !feof($this->sock) &&
                   (false !== ($buf = fread($this->sock, $n - $read))))
@@ -365,20 +337,16 @@ class AMQPReader
      * On 32 bit systems it will return signed int value in
      * -2^31...+2^31 range.
      *
+     * Callers MUST check for negative return values.
+     *
      * Use with caution!
      */
     public function read_php_int()
     {
         list(,$res) = unpack('N', $this->rawread(4));
-        if($this->is64bits)
-        {
-            $sres = sprintf ( "%u", $res );
-            return (int)$sres;
-        } else {
-            return $res;
-        }
+        return $res;
     }
-    
+
     // PHP does not have unsigned 32 bit int,
     // so we return it as a string
     public function read_long()
@@ -410,7 +378,7 @@ class AMQPReader
         // workaround signed/unsigned braindamage in php
         $hi = sprintf ( "%u", $hi[1] );
         $lo = sprintf ( "%u", $lo[1] );
- 
+
         return bcadd(bcmul($hi, "4294967296" ), $lo);
     }
 
@@ -424,7 +392,7 @@ class AMQPReader
         list(,$slen) = unpack('C', $this->rawread(1));
         return $this->rawread($slen);
     }
-    
+
     /**
      * Read a string that's up to 2**32 bytes, the encoding
      * isn't specified in the AMQP spec, so just return it as
@@ -438,7 +406,7 @@ class AMQPReader
             throw new Exception("Strings longer than supported on this platform");
         return $this->rawread($slen);
     }
-    
+
     /**
      * Read and AMQP timestamp, which is a 64-bit integer representing
      * seconds since the Unix epoch in 1-second resolution.
@@ -488,12 +456,12 @@ class AMQPReader
         return $result;
     }
 
-    
+
     protected function tell()
     {
         return $this->offset;
     }
-    
+
 }
 
 
@@ -516,7 +484,7 @@ class GenericContent
         $d = array();
         if ($props)
             $d = array_intersect_key($props, $this->prop_types);
-        else    
+        else
             $d = array();
         $this->properties = $d;
     }
@@ -530,11 +498,11 @@ class GenericContent
     {
         if(array_key_exists($name,$this->properties))
             return $this->properties[$name];
-        
+
         if(isset($this->delivery_info))
             if(array_key_exists($name,$this->delivery_info))
                 return $this->delivery_info[$name];
-        
+
         throw new Exception("No such property");
     }
 
@@ -570,8 +538,10 @@ class GenericContent
                 $flag_bits = array_shift($flags);
                 $shift = 15;
             }
-            if($flag_bits & (1 << $shift))
-                $d[$key] = call_user_func(array($r,"read_".$proptype));
+            if($flag_bits & (1 << $shift)) {
+                $method = 'read_'.$proptype;
+                $d[$key] = $r->$method();
+            }
             $shift -= 1;
         }
         $this->properties = $d;
@@ -591,7 +561,7 @@ class GenericContent
         $raw_bytes = new AMQPWriter();
         foreach ($this->prop_types as $key => $proptype)
         {
-            if(array_key_exists($key,$this->properties))
+            if(isset($this->properties[$key]))
                 $val = $this->properties[$key];
             else
                 $val = NULL;
@@ -599,24 +569,25 @@ class GenericContent
             {
                 if($shift == 0)
                 {
-                    array_push($flags, $flag_bits);
+                    $flags[] = $flag_bits;
                     $flag_bits = 0;
                     $shift = 15;
                 }
-                
+
                 $flag_bits |= (1 << $shift);
-                if($proptype != "bit")
-                    call_user_func(array($raw_bytes, "write_" . $proptype),
-                                   $val);
+                if($proptype != "bit") {
+                    $method = 'write_'.$proptype;
+                    $raw_bytes->$method($val);
+                }
             }
             $shift -= 1;
         }
-        array_push($flags, $flag_bits);
+        $flags[] = $flag_bits;
         $result = new AMQPWriter();
         foreach($flags as $flag_bits)
             $result->write_short($flag_bits);
         $result->write($raw_bytes->getvalue());
-        
+
         return $result->getvalue();
     }
 }
