@@ -38,7 +38,7 @@ class AMQPDecimal
 
     public function asBCvalue()
     {
-        return bcdiv($n, bcpow(10,$e));
+        return bcdiv($this->n, bcpow(10,$this->e));
     }
 }
 
@@ -217,7 +217,7 @@ class AMQPWriter
             {
                 $table_data->write('T');
                 $table_data->write_timestamp($v);
-            } else if($ftype='F')
+            } else if($ftype=='F')
             {
                 $table_data->write('F');
                 $table_data->write_table($v);
@@ -417,7 +417,7 @@ class AMQPReader
             $ftype = $table_data->rawread(1);
             if($ftype == 'S') {
                 $val = $table_data->read_longstr();
-            } else if(ftype == 'I') {
+            } else if($ftype == 'I') {
                 $val = $table_data->read_signed_long();
             } else if($ftype == 'D')
             {
@@ -464,11 +464,11 @@ class GenericContent
             $this->prop_types = $prop_types;
         else
             $this->prop_types = GenericContent::$PROPERTIES;
+
         $d = array();
         if ($props)
             $d = array_intersect_key($props, $this->prop_types);
-        else
-            $d = array();
+
         $this->properties = $d;
     }
 
